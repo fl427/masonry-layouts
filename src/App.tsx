@@ -44,13 +44,45 @@ interface IProps {
   yAxisGap?: number; // 图片纵向间距
 }
 
+// 并行加载，获取每一个图片的高度
+const loadImgHeights = (imgs: string[], itemWidth = 235): Promise<number[]> => {
+  return new Promise((resolve, reject) => {
+    const length = imgs.length
+    const heights: number[] = []
+    let count = 0
+    const load = (index: number) => {
+      let img = new Image()
+      const checkIfFinished = () => {
+        count++
+        if (count === length) {
+          resolve(heights)
+        }
+      }
+      img.onload = () => {
+        const ratio = img.height / img.width
+        const halfHeight = ratio * itemWidth
+        // 高度按屏幕一半的比例来计算
+        heights[index] = halfHeight
+        checkIfFinished()
+      }
+      img.onerror = () => {
+        heights[index] = 0
+        checkIfFinished()
+      }
+      img.src = imgs[index]
+    }
+    imgs.forEach((img, index) => load(index))
+  })
+}
+
+
 const App: React.FC<IProps> = ({ xAxisGap = 4, yAxisGap = 10 }) => {
 
   const masonryImageIns = new MasonryImage('');
   const waterfallDivRef = useRef<HTMLDivElement>(null);
 
   // 从接口获取图片src列表
-  const handleGetImages = (params?: Record<string, string>) => {
+  const handleGetImages = (params?: Record<string, string>): Promise<string[]> => {
     return new Promise((resolve, reject) => {
       resolve(imageSources);
     })
@@ -63,15 +95,17 @@ const App: React.FC<IProps> = ({ xAxisGap = 4, yAxisGap = 10 }) => {
   }
 
   // 创建内部元素
-  const createItem = (src: string): Promise<HTMLImageElement> => {
+  // 此处我们直接返回创建的元素，由于接下来我们使用了await loadImgHeights方法，进行了预加载，因此能够取得元素的高度
+  const createItem = (src: string): HTMLImageElement => {
     const img = new Image();
     img.className = 'waterfall-img';
     img.src = src;
-    return new Promise(function (resolve, reject) {
-      img.onload = function () {
-        resolve(img);
-      }
-    });
+    return img;
+    // return new Promise(function (resolve, reject) {
+    //   img.onload = function () {
+    //     resolve(img);
+    //   }
+    // });
   };
 
   // 瀑布流函数
@@ -110,41 +144,46 @@ const App: React.FC<IProps> = ({ xAxisGap = 4, yAxisGap = 10 }) => {
     console.log('pageWidth', pageWidth);
     const column = Math.floor(pageWidth / (itemWidth + xAxisGap)); // 列数 = 页面宽度 / (图片宽度 + 间距)
     const heightArr = Array(column).fill(0); // 保存每一列的高度，初始值为0;
+
     // 初始化瀑布流
-    const init = () => {
-      handleGetImages().then(async (sources) => {
-        console.log('sources', sources);
-        const frag = document.createDocumentFragment(); // 每次创建完元素就插入会导致重排，createDocumentFragment存在于内存中，文档插入时仅重排一次
-        for (let i = 0; i < imageSources.length; i++) {
-          // todo: 图片加载 只需要宽高
-          // frag.appendChild(createItem(imageSources[i]));
-          await createItem(imageSources[i]).then((img) => {
-            console.log('img', img.src, img.height);
-            const minIndex = getMinIndex(heightArr);
-            // 定位这张图片的top
-            const imgTop = heightArr[minIndex] + yAxisGap;
-            img.style.top = `${imgTop}px`;
-            // 定位这张图片的left
-            const leftOffset = (pageWidth - (column * (itemWidth + xAxisGap) - xAxisGap)) / 2; // 左边padding，确保内容居中
-            const imgLeft = leftOffset + minIndex * (itemWidth + xAxisGap);
-            img.style.left = `${imgLeft}px`;
-            // 调整显示高度
-            const masonryWidth = itemWidth;
-            const masonryHeight = itemWidth * (img.height / img.width); // 按照比例算出显示在瀑布流上的长度
-            img.width = masonryWidth;  // 指定img的显示宽度
-            img.height = masonryHeight;  // 指定img的显示高度
+    const init = async () => {
 
-            heightArr[minIndex] = imgTop + masonryHeight;
-            frag.appendChild(img);
-          })
-        };
+      const sources = await handleGetImages();
+      console.log('sources', sources);
+      // 得到目前图片的高度，因为是并行，所以不需要等待每个图片都加载完
+      // todo: 这里返回我定义的Image类更好，imageHeights目前没用
+      const imageHeights = await loadImgHeights(sources, itemWidth);
+      console.log('imgXXX', imageHeights);
 
-        console.log(frag.childNodes);
+      const frag = document.createDocumentFragment(); // 每次创建完元素就插入会导致重排，createDocumentFragment存在于内存中，文档插入时仅重排一次
+      for (let i = 0; i < sources.length; i++) {
+        frag.appendChild(createItem(sources[i]));
+        // await createItem(sources[i]).then((img) => {
+        //   console.log('img', img.src, img.height);
+        //   const minIndex = getMinIndex(heightArr);
+        //   // 定位这张图片的top
+        //   const imgTop = heightArr[minIndex] + yAxisGap;
+        //   img.style.top = `${imgTop}px`;
+        //   // 定位这张图片的left
+        //   const leftOffset = (pageWidth - (column * (itemWidth + xAxisGap) - xAxisGap)) / 2; // 左边padding，确保内容居中
+        //   const imgLeft = leftOffset + minIndex * (itemWidth + xAxisGap);
+        //   img.style.left = `${imgLeft}px`;
+        //   // 调整显示高度
+        //   const masonryWidth = itemWidth;
+        //   const masonryHeight = itemWidth * (img.height / img.width); // 按照比例算出显示在瀑布流上的长度
+        //   img.width = masonryWidth;  // 指定img的显示宽度
+        //   img.height = masonryHeight;  // 指定img的显示高度
 
-        document.querySelector("#waterfall")?.appendChild(frag);
+        //   heightArr[minIndex] = imgTop + masonryHeight;
+        //   frag.appendChild(img);
+        // })
+      };
 
-        waterfall();
-      });
+      console.log(frag.childNodes);
+
+      document.querySelector("#waterfall")?.appendChild(frag);
+
+      waterfall();
     };
     init();
 
