@@ -1,0 +1,12 @@
+.App {
+    padding: 40px;
+    column-count: 4;
+    column-gap: 1rem;
+  
+    .card {
+      background-color: aqua;
+      margin-bottom: 1rem;
+      break-inside: avoid; // 关键属性，用来防止断点，防止card被内部截断
+    }
+  }
+  

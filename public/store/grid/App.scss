@@ -1,0 +1,23 @@
+.App {
+    padding: 40px;
+    display: grid;
+    grid-auto-rows: 100px;
+    grid-gap: 10px;
+    grid-template-columns: repeat(auto-fill, minmax(20%, 1fr));
+  
+    .card {
+      background-color: aqua;
+      grid-row: span 1;
+    }
+  
+    .short {
+      grid-row: span 1;     
+    }
+    .tall {
+      grid-row: span 2;
+    }
+    .taller {
+      grid-row: span 3;
+    }
+  }
+  

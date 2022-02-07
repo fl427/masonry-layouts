@@ -1,0 +1,13 @@
+.App {
+    padding: 40px;
+    height: 600px;
+    display: flex;
+    flex-flow: column wrap;
+  
+    .card {
+      background-color: aqua;
+      margin-bottom: 1rem;
+      width: 20vw;
+    }
+  }
+  
