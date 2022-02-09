@@ -5,6 +5,7 @@
 // https://juejin.cn/post/6963071339108237319
 // https://juejin.cn/post/6844904051310592014
 import React, { useCallback, useEffect, useReducer, useRef, useState } from 'react';
+import { useDebounce } from './hooks/useDebounce';
 // todo: 懒加载
 import './App.scss';
 
@@ -137,6 +138,13 @@ const App: React.FC<IProps> = ({ xAxisGap = 4, yAxisGap = 10 }) => {
     }
   }, [xAxisGap, yAxisGap]);
 
+  // 用户Resize窗口时调动
+  const resize = useDebounce(() => {
+    if (document.body.offsetWidth < 600) return;
+
+    waterfall();
+  }, 10)
+
   useEffect(() => {
     const itemWidth = 235; // 每一项子元素的宽度，即图片在瀑布流中显示宽度，保证每一项等宽不等高
     // const pageWidth = global.innerWidth; // 当前页面的宽度
@@ -187,11 +195,7 @@ const App: React.FC<IProps> = ({ xAxisGap = 4, yAxisGap = 10 }) => {
     };
     init();
 
-    const resize = () => {
-      if (document.body.offsetWidth < 600) return;
 
-      waterfall();
-    }
     // todo: 防抖
     global.addEventListener('resize', resize);
   }, [xAxisGap, yAxisGap, waterfall]);
