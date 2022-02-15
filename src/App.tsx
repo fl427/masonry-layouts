@@ -4,7 +4,7 @@
 // https://juejin.cn/post/7012924144618569764
 // https://juejin.cn/post/6963071339108237319
 // https://juejin.cn/post/6844904051310592014
-import React, { useCallback, useEffect, useReducer, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { useDebounce } from './hooks/useDebounce';
 // todo: 懒加载
 import './App.scss';
@@ -98,6 +98,8 @@ const itemWidth = 235; // 每一项子元素的宽度，即图片在瀑布流中
 const App: React.FC<IProps> = ({ xAxisGap = 4, yAxisGap = 10 }) => {
 
   const [masonryImages, setMasonryImages] = useState<MasonryImage[]>([]); // 记录目前的图片实例列表
+  const loadedIdx = useRef<number>(0); // 用于对已经完成布局定位的元素计数，每次懒加载新增元素时，都只对新增的元素进行布局定位，而之前的元素则不再布局
+  const heightArrRef = React.useRef<number[]>(); // 记录每列的高度 
   const waterfallDivRef = useRef<HTMLDivElement>(null);
 
   // 从接口获取图片src列表
@@ -113,6 +115,18 @@ const App: React.FC<IProps> = ({ xAxisGap = 4, yAxisGap = 10 }) => {
     return array.indexOf(min);
   }
 
+  // 获取当前的页面宽度和计算得出的列数
+  const getColumnAndPageWidth = (): {
+    pageWidth: number;
+    column: number;
+  } => {
+    const pageWidth = waterfallDivRef.current?.clientWidth || global.innerWidth;
+    return {
+      pageWidth,
+      column: Math.floor(pageWidth / (itemWidth + xAxisGap)),
+    };
+  }
+
   // 初始化 - 初次加载 & 下滑懒加载
   const init = async () => {
     const sources = await handleGetImages();
@@ -125,17 +139,17 @@ const App: React.FC<IProps> = ({ xAxisGap = 4, yAxisGap = 10 }) => {
     waterfall(imagesOrigin);
   };
 
-  // 瀑布流函数
-  const waterfall = useCallback((images: MasonryImage[] = []) => {
-    console.log('masonry--', masonryImages)
-
-    const pageWidth = waterfallDivRef.current?.clientWidth || global.innerWidth;
-    const column = Math.floor(pageWidth / (itemWidth + xAxisGap)); // 列数 = 页面宽度 / (图片宽度 + 间距)
-    const heightArr = Array(column).fill(0); // 保存每一列的高度，初始值为0;
-
+  // heightArrRef.current和loadedIdx.current配合使用
+  // 瀑布流函数 决定元素位置
+  const waterfall = (images: MasonryImage[] = [], reset: boolean = false) => {
+    console.log('imgs', masonryImages.length, heightArrRef.current);
+    const { pageWidth, column } = getColumnAndPageWidth();
+    if (reset || !heightArrRef.current) { // 如果resize或者没有初始值，就赋一个
+      heightArrRef.current = Array(column).fill(0);
+    }
+    const heightArr = heightArrRef.current;
     const masonryImagesTempList: MasonryImage[] = [...images];
-    console.log('test', masonryImagesTempList)
-    for (let i = 0; i < masonryImagesTempList.length; i++) {
+    for (let i = loadedIdx.current; i < masonryImagesTempList.length; i++) {
       const masonryImageInstance = masonryImagesTempList?.[i];
       const minIndex = getMinIndex(heightArr);
       // 定位这张图片的top
@@ -147,18 +161,19 @@ const App: React.FC<IProps> = ({ xAxisGap = 4, yAxisGap = 10 }) => {
       const imgLeft = leftOffset + minIndex * (itemWidth + xAxisGap);
       masonryImageInstance && masonryImageInstance.setAttributes('offsetX', imgLeft);
 
-      heightArr[minIndex] = imgTop + masonryImageInstance.masonryHeight;
+      heightArr[minIndex] = imgTop + (masonryImageInstance.masonryHeight || 0);
     };
-
+    loadedIdx.current += masonryImagesTempList.length - loadedIdx.current;
     setMasonryImages(masonryImagesTempList);
-  }, [xAxisGap, yAxisGap]);
+  };
 
   // 用户Resize窗口时调动
+  // TODO: 这里用防抖总觉得不够好，我期望的效果是检测用户正在拖动中，就不做行动，用户只要已停止就立刻调用，看看用RxJS的事件流能不能解决问题
   const resize = useDebounce(() => {
     if (document.body.offsetWidth < 600) return;
-
-    waterfall(masonryImages);
-  }, 25);
+    loadedIdx.current = 0;
+    waterfall(masonryImages, true);
+  }, 0);
 
   // 懒加载
   const lazyLoad = () => {
@@ -166,21 +181,18 @@ const App: React.FC<IProps> = ({ xAxisGap = 4, yAxisGap = 10 }) => {
     const documentHeight = document.documentElement.scrollHeight;
     const clientHeight = window.innerHeight;
 
-    console.log('lazyload', scrollTop, documentHeight, documentHeight - scrollTop, clientHeight)
     if (documentHeight - scrollTop <= 1.5 * clientHeight) {
-      console.log('lazyloadinitAgain');
+      console.log('loadedAgain--');
       init();
     }
-  }
-
+  };
 
   useEffect(() => {
     // 初始化瀑布流
     init();
-    // todo: 防抖
     window.addEventListener('resize', resize);
     window.addEventListener("scroll", lazyLoad)
-  }, [xAxisGap, yAxisGap, waterfall]);
+  }, []);
 
   return (
     <div className="App" >
@@ -196,6 +208,7 @@ const App: React.FC<IProps> = ({ xAxisGap = 4, yAxisGap = 10 }) => {
                   height: image.masonryHeight
                 }}
                 src={image.src}
+                alt=''
                 className='waterfall-img'
               />
             </div>
